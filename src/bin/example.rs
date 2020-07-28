@@ -1,4 +1,6 @@
 use indicatif::ProgressStyle;
+use log::LevelFilter;
+use log4rs::config::Logger;
 use proglog::{ProgLog, ProgLogConfig};
 use std::thread;
 use std::time::Duration;
@@ -20,6 +22,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .template("{elapsed_precise} [{wide_bar}] {pos:>7}/{len:7} {eta} {msg:40}")
                 .progress_chars("=> "),
         )
+        .loggers(vec![
+            Logger::builder().build("hyper", LevelFilter::Info),
+            Logger::builder().build("reqwest", LevelFilter::Info),
+            Logger::builder().build("mio", LevelFilter::Info),
+            Logger::builder().build("want", LevelFilter::Info),
+        ])
         .build();
 
     let mut plog = ProgLog::new(config)?;

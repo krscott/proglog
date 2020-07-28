@@ -1,5 +1,6 @@
 use indicatif::{MultiProgress, ProgressBar, ProgressDrawTarget, ProgressStyle};
 use log::SetLoggerError;
+use log4rs::config::Logger;
 use std::{io, path::Path};
 use typed_builder::TypedBuilder;
 
@@ -16,6 +17,9 @@ pub struct ProgLogConfig<'a> {
 
     #[builder(default, setter(strip_option))]
     style: Option<ProgressStyle>,
+
+    #[builder(default = vec![])]
+    loggers: Vec<Logger>,
 }
 
 pub struct ProgLog {
@@ -35,6 +39,7 @@ impl ProgLog {
             config.log_path,
             config.show_line_numbers,
             Some(logger_progress_bar.clone()),
+            config.loggers,
         )?;
 
         let multi_progress = MultiProgress::new();
