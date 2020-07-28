@@ -20,6 +20,7 @@ pub fn init_logger<P: AsRef<Path>>(
     log_path: Option<P>,
     show_line_numbers: bool,
     progress_bar: Option<indicatif::ProgressBar>,
+    loggers: Vec<Logger>,
 ) -> Result<(), SetLoggerError> {
     let log_config = Config::builder();
     let log_root = Root::builder();
@@ -97,11 +98,9 @@ pub fn init_logger<P: AsRef<Path>>(
     };
 
     // Filter out some modules
-    let log_config = log_config
-        .logger(Logger::builder().build("hyper", LevelFilter::Info))
-        .logger(Logger::builder().build("reqwest", LevelFilter::Info))
-        .logger(Logger::builder().build("mio", LevelFilter::Info))
-        .logger(Logger::builder().build("want", LevelFilter::Info));
+    let log_config = loggers
+        .into_iter()
+        .fold(log_config, |cfg, logger| cfg.logger(logger));
 
     // Build logger
 
