@@ -23,6 +23,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .progress_chars("=> "),
         )
         .loggers(vec![
+            // (Here for config building demonstration. Not actually used in this example.)
             Logger::builder().build("hyper", LevelFilter::Info),
             Logger::builder().build("reqwest", LevelFilter::Info),
             Logger::builder().build("mio", LevelFilter::Info),
