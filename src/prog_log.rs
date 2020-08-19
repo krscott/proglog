@@ -1,25 +1,36 @@
+use crate::log4rs_progress::ProgressAppender;
 use indicatif::{MultiProgress, ProgressBar, ProgressDrawTarget, ProgressStyle};
-use log::SetLoggerError;
-use log4rs::config::Logger;
-use std::{io, path::Path};
-use typed_builder::TypedBuilder;
+use log4rs::encode::pattern::PatternEncoder;
+use std::io;
 
-#[derive(TypedBuilder)]
-pub struct ProgLogConfig<'a> {
-    #[builder(default = 1)]
-    verbosity: i32,
+const DEFAULT_ENCODER_PATTERN: &str = "{h({l})} {f}:{L} - {m}\n";
 
-    #[builder(default, setter(strip_option))]
-    log_path: Option<&'a Path>,
-
-    #[builder(default = false)]
-    show_line_numbers: bool,
-
-    #[builder(default, setter(strip_option))]
+pub struct ProgLogBuilder {
     style: Option<ProgressStyle>,
+    encoder: Option<Box<PatternEncoder>>,
+}
 
-    #[builder(default = vec![])]
-    loggers: Vec<Logger>,
+impl ProgLogBuilder {
+    fn new() -> Self {
+        Self {
+            style: None,
+            encoder: None,
+        }
+    }
+
+    pub fn style(mut self, value: ProgressStyle) -> Self {
+        self.style = Some(value);
+        self
+    }
+
+    pub fn encoder(mut self, value: Box<PatternEncoder>) -> Self {
+        self.encoder = Some(value);
+        self
+    }
+
+    pub fn build(self) -> (ProgLog, ProgressAppender) {
+        ProgLog::from_builder(self)
+    }
 }
 
 pub struct ProgLog {
@@ -30,30 +41,42 @@ pub struct ProgLog {
 }
 
 impl ProgLog {
-    pub fn new(config: ProgLogConfig) -> Result<Self, SetLoggerError> {
-        let logger_progress_bar = new_progress_bar(1);
-        hide_progress_bar(&logger_progress_bar);
+    pub fn builder() -> ProgLogBuilder {
+        ProgLogBuilder::new()
+    }
 
-        crate::init_logger::init_logger(
-            config.verbosity,
-            config.log_path,
-            config.show_line_numbers,
-            Some(logger_progress_bar.clone()),
-            config.loggers,
-        )?;
+    fn from_builder(builder: ProgLogBuilder) -> (Self, ProgressAppender) {
+        let style = builder
+            .style
+            .unwrap_or_else(|| ProgressStyle::default_bar());
+
+        let logger_progress_bar = new_progress_bar();
+        hide_progress_bar(&logger_progress_bar);
 
         let multi_progress = MultiProgress::new();
         multi_progress.add(logger_progress_bar.clone());
 
-        Ok(Self {
-            style: config.style.unwrap_or_else(|| ProgressStyle::default_bar()),
-            multi_progress,
-            logger_progress_bar,
-            is_first_pb: true,
-        })
+        let progress_appender = ProgressAppender::builder()
+            .encoder(
+                builder
+                    .encoder
+                    .unwrap_or_else(|| Box::new(PatternEncoder::new(DEFAULT_ENCODER_PATTERN))),
+            )
+            .progress_bar(logger_progress_bar.clone())
+            .build();
+
+        (
+            Self {
+                style,
+                multi_progress,
+                logger_progress_bar,
+                is_first_pb: true,
+            },
+            progress_appender,
+        )
     }
 
-    pub fn add(&mut self, len: u64) -> ProgressBar {
+    pub fn add_with_length(&mut self, len: u64) -> ProgressBar {
         let pb = if self.is_first_pb {
             self.is_first_pb = false;
 
@@ -70,6 +93,10 @@ impl ProgLog {
 
         pb.set_style(self.style.clone());
         pb
+    }
+
+    pub fn add(&mut self) -> ProgressBar {
+        self.add_with_length(1)
     }
 
     fn pre_join(&mut self) {
@@ -102,8 +129,8 @@ impl ProgLog {
     }
 }
 
-fn new_progress_bar(len: u64) -> ProgressBar {
-    let pb = ProgressBar::new(len);
+fn new_progress_bar() -> ProgressBar {
+    let pb = ProgressBar::new(1);
     pb.set_draw_target(ProgressDrawTarget::stderr());
     pb
 }
