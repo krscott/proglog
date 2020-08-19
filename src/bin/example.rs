@@ -1,9 +1,62 @@
 use indicatif::ProgressStyle;
-use log::LevelFilter;
-use log4rs::config::Logger;
-use proglog::{ProgLog, ProgLogConfig};
+use log::{LevelFilter, SetLoggerError};
+use log4rs::{
+    append::rolling_file::{
+        policy::compound::{
+            roll::delete::DeleteRoller, trigger::size::SizeTrigger, CompoundPolicy,
+        },
+        RollingFileAppender,
+    },
+    config::{Appender, Config, Logger, Root},
+    encode::pattern::PatternEncoder,
+    filter::threshold::ThresholdFilter,
+    Handle,
+};
+use proglog::{ProgLog, ProgressAppender};
 use std::thread;
 use std::time::Duration;
+
+pub fn init_log4rs(progress_appender: ProgressAppender) -> Result<Handle, SetLoggerError> {
+    let console_appender = Appender::builder()
+        .filter(Box::new(ThresholdFilter::new(LevelFilter::Info)))
+        .build("stderr", Box::new(progress_appender));
+
+    // SizeTrigger: Trigger at # of bytes
+    // DeleteRoller: Delete on trigger
+    let file_policy = Box::new(CompoundPolicy::new(
+        Box::new(SizeTrigger::new(10_000_000)),
+        Box::new(DeleteRoller::new()),
+    ));
+
+    let file_appender = Appender::builder().build(
+        "logfile",
+        Box::new(
+            RollingFileAppender::builder()
+                .encoder(Box::new(PatternEncoder::new(
+                    "{d(%Y-%m-%d %H:%M:%S %Z)} {l} {M} {f}:{L} - {m}\n",
+                )))
+                .build(String::from("example.log"), file_policy)
+                .expect("could not build file logger"),
+        ),
+    );
+
+    let log_config = Config::builder()
+        .appender(console_appender)
+        .appender(file_appender)
+        // (Here for config building demonstration. Not actually used in this example.)
+        .logger(Logger::builder().build("hyper", LevelFilter::Info))
+        .logger(Logger::builder().build("reqwest", LevelFilter::Info))
+        .logger(Logger::builder().build("mio", LevelFilter::Info))
+        .logger(Logger::builder().build("want", LevelFilter::Info));
+
+    let log_root = Root::builder().appender("stderr").appender("logfile");
+
+    log4rs::init_config(
+        log_config
+            .build(log_root.build(LevelFilter::Trace))
+            .expect("could not build log config"),
+    )
+}
 
 fn logall(msg: &str) {
     log::error!("error {}", msg);
@@ -15,26 +68,19 @@ fn logall(msg: &str) {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Based on https://github.com/mitsuhiko/indicatif/blob/main/examples/multi.rs
 
-    let config = ProgLogConfig::builder()
-        .verbosity(1)
+    let (mut plog, progress_appender) = ProgLog::builder()
         .style(
             ProgressStyle::default_bar()
                 .template("{elapsed_precise} [{wide_bar}] {pos:>7}/{len:7} {eta} {msg:40}")
                 .progress_chars("=> "),
         )
-        .loggers(vec![
-            // (Here for config building demonstration. Not actually used in this example.)
-            Logger::builder().build("hyper", LevelFilter::Info),
-            Logger::builder().build("reqwest", LevelFilter::Info),
-            Logger::builder().build("mio", LevelFilter::Info),
-            Logger::builder().build("want", LevelFilter::Info),
-        ])
+        .encoder(Box::new(PatternEncoder::new("{h({l})} {f}:{L} - {m}\n")))
         .build();
 
-    let mut plog = ProgLog::new(config)?;
+    let _handle = init_log4rs(progress_appender)?;
 
     for j in 0..2 {
-        let pb = plog.add(128);
+        let pb = plog.add_with_length(128);
 
         logall(&format!("Loop: {}", j));
         thread::sleep(Duration::from_millis(1000));
@@ -53,7 +99,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             pb.finish_with_message("done");
         });
 
-        let pb = plog.add(128);
+        let pb = plog.add_with_length(128);
         let _ = thread::spawn(move || {
             for _ in 0..2 {
                 pb.set_position(0);
@@ -71,7 +117,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             pb.finish_with_message("done");
         });
 
-        let pb = plog.add(1024);
+        let pb = plog.add_with_length(1024);
         let _ = thread::spawn(move || {
             for i in 0..124 {
                 pb.set_message(&format!("item #{}", i + 1));
