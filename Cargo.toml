@@ -1,7 +1,7 @@
 [package]
 name = "proglog"
 version = "0.2.1"
-authors = ["Kris Scott <kris.scott@garmin.com>"]
+authors = ["Kris Scott <kscott91@gmail.com>"]
 edition = "2018"
 default-run = "example"
 
